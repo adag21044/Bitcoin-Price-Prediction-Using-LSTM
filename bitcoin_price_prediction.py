@@ -8,36 +8,36 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping
 
-# Load the dataset
+# Veri setini yükleme
 data = pd.read_csv("/content/consolidated_coin_data.csv", quotechar='"')
 
-# Filter only Bitcoin data
+# Yalnızca Bitcoin verilerini filtreleme
 bitcoin_data = data[data['Currency'].str.lower() == 'bitcoin'].copy()
 
-# Check if Bitcoin data exists
+# Bitcoin verilerinin olup olmadığını kontrol etme
 if bitcoin_data.empty:
-    print("Bitcoin data not found in the dataset. Please check the dataset.")
+    print("Veri setinde 'Bitcoin' verisi bulunamadı. Lütfen veri setini kontrol edin.")
 else:
-    # Check and process the 'Close' column data type
+    # 'Close' sütununun veri tipini kontrol ederek işlem yap
     if bitcoin_data['Close'].dtype == 'object':
         bitcoin_data['Close'] = bitcoin_data['Close'].str.replace(',', '').astype(float)
 
-    # Sort data by date
+    # Tarihe göre sıralama
     bitcoin_data = bitcoin_data.sort_values('Date')
 
-    # Extract only closing prices
+    # Sadece kapanış fiyatlarını alalım
     dataset = bitcoin_data[['Close']].values
 
-    # Scale data (using MinMaxScaler to scale between 0 and 1)
+    # Veriyi ölçeklendirme
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(dataset)
 
-    # Split data into training and testing sets
+    # Eğitim ve test seti ayrımı
     train_size = int(len(scaled_data) * 0.8)
     test_size = len(scaled_data) - train_size
     train_data, test_data = scaled_data[0:train_size, :], scaled_data[train_size:len(scaled_data), :]
 
-    # Function to create time series data
+    # Zaman serisi verisi hazırlama fonksiyonu
     def create_dataset(dataset, time_step=1):
         X, Y = [], []
         for i in range(len(dataset) - time_step - 1):
@@ -46,16 +46,16 @@ else:
             Y.append(dataset[i + time_step, 0])
         return np.array(X), np.array(Y)
 
-    # Set time step
-    time_step = 120  # Increase time step to use more past data
+    # Zaman adımını belirleme
+    time_step = 120  # Zaman adımını artırarak daha fazla geçmiş veri kullanıyoruz
     X_train, y_train = create_dataset(train_data, time_step)
     X_test, y_test = create_dataset(test_data, time_step)
 
-    # Reshape input data for LSTM
+    # LSTM için giriş şekline uygun boyuta getirme
     X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
     X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
 
-    # Build LSTM model
+    # LSTM modeli oluşturma
     model = Sequential()
     model.add(LSTM(units=300, return_sequences=True, input_shape=(time_step, 1)))
     model.add(Dropout(0.3))
@@ -66,32 +66,32 @@ else:
     model.add(Dense(units=50))
     model.add(Dense(units=1))
 
-    # Compile model (using a lower learning rate)
-    optimizer = Adam(learning_rate=0.0001)  # Lower learning rate
+    # Modelin derlenmesi (daha düşük öğrenme oranı)
+    optimizer = Adam(learning_rate=0.0001)  # Öğrenme oranını daha da düşürdük
     model.compile(optimizer=optimizer, loss='mean_squared_error')
 
-    # Early stopping to prevent overfitting
+    # Erken durdurma
     early_stop = EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
 
-    # Train the model
+    # Modelin eğitilmesi
     history = model.fit(X_train, y_train, batch_size=32, epochs=150, validation_split=0.1, callbacks=[early_stop])
 
-    # Inverse scaling for predictions
+    # Tahminleri ters ölçeklendirme
     train_predict = model.predict(X_train)
     test_predict = model.predict(X_test)
     train_predict = scaler.inverse_transform(train_predict)
     test_predict = scaler.inverse_transform(test_predict)
 
-    # Inverse scaling for y_test
+    # Gerçek y_test değerlerini ters ölçeklendirme
     y_test = scaler.inverse_transform([y_test])[0]
 
-    # Performance metrics
+    # Performans metrikleri
     rmse = np.sqrt(mean_squared_error(y_test, test_predict[:, 0]))
     mae = mean_absolute_error(y_test, test_predict[:, 0])
     print(f"Root Mean Squared Error (RMSE): {rmse}")
     print(f"Mean Absolute Error (MAE): {mae}")
 
-    # Plot actual vs predicted prices
+    # Gerçek ve tahmin edilen fiyatları görselleştirme
     plt.figure(figsize=(14,6))
     plt.plot(scaler.inverse_transform(scaled_data), label='Gerçek Fiyat')
     plt.plot(np.arange(time_step, len(train_predict)+time_step), train_predict, label='Eğitim Tahminleri')
